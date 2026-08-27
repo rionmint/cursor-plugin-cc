@@ -98,25 +98,26 @@ function writeFileAtomic(filePath, content) {
   fs.renameSync(tempPath, filePath);
 }
 
+function readLockToken(lockPath) {
+  try {
+    return String(fs.readFileSync(lockPath, "utf8")).trim();
+  } catch {
+    return "";
+  }
+}
+
 /**
- * Whether the process that holds the lock file is still running.
+ * Whether the process named in the lock file is still running.
  *
- * `openSync(..., "wx")` is atomic, which is the property that matters, but a
- * holder that dies without unlinking leaves the lock behind forever and every
- * later save — including `/cursor-cc:stop` — fails. So the holder writes its own
- * pid into the lock and a waiter is allowed to break a lock whose owner is gone.
+ * An empty lock means nothing is claimed yet — see `acquireLock` for why that
+ * cannot happen for a lock we created — and is treated as *held*, not stale.
+ * Guessing "stale" there is what lets a waiter steal a live holder's lock.
  */
 function lockHolderIsAlive(lockPath) {
-  let raw;
-  try {
-    raw = fs.readFileSync(lockPath, "utf8");
-  } catch {
-    return false;
-  }
-  const pid = Number.parseInt(String(raw).trim(), 10);
+  const token = readLockToken(lockPath);
+  const pid = Number.parseInt(token.split(":")[0], 10);
   if (!Number.isInteger(pid) || pid <= 0) {
-    // An empty or unreadable lock is from an older version or a crash midway.
-    return false;
+    return true;
   }
   if (pid === process.pid) {
     return true;
@@ -129,51 +130,79 @@ function lockHolderIsAlive(lockPath) {
   }
 }
 
+/**
+ * Claim the lock atomically *with its contents already in place*.
+ *
+ * `openSync(lockPath, "wx")` followed by a write leaves a window in which the
+ * lock exists but is empty. A waiter that looked in during that window saw no
+ * pid, concluded the lock was stale, and unlinked it — out from under a holder
+ * that was still inside its critical section.
+ *
+ * `link()` closes the window: the file is written completely under a private
+ * name first, and the link into the shared name is a single atomic operation
+ * that fails if the name is taken.
+ *
+ * @returns the token written on success, or null when the lock is already held.
+ */
+function acquireLock(lockPath, token) {
+  const stagingPath = `${lockPath}.${process.pid}.${Math.random().toString(36).slice(2, 10)}`;
+  fs.writeFileSync(stagingPath, token, { encoding: "utf8", mode: 0o600 });
+  try {
+    fs.linkSync(stagingPath, lockPath);
+    return token;
+  } catch (error) {
+    if (error?.code === "EEXIST") {
+      return null;
+    }
+    throw error;
+  } finally {
+    try {
+      fs.unlinkSync(stagingPath);
+    } catch {
+      // the staging copy is disposable
+    }
+  }
+}
+
+/** Release only if the lock still carries our token; never someone else's. */
+function releaseLock(lockPath, token) {
+  if (readLockToken(lockPath) !== token) {
+    return;
+  }
+  try {
+    fs.unlinkSync(lockPath);
+  } catch {
+    // already gone
+  }
+}
+
 export function withStateLock(cwd, fn) {
   ensureStateDir(cwd);
   const lockPath = path.join(resolveStateDir(cwd), LOCK_FILE_NAME);
+  const token = `${process.pid}:${Math.random().toString(36).slice(2, 10)}`;
   let brokeStaleLock = false;
 
   for (let attempt = 0; attempt < LOCK_MAX_ATTEMPTS; attempt += 1) {
-    let fd = null;
-    try {
-      fd = fs.openSync(lockPath, "wx");
-    } catch (error) {
-      if (error?.code === "EEXIST") {
-        // Break a lock left behind by a dead process, but only once, so two
-        // live waiters cannot ping-pong over each other's lock.
-        if (!brokeStaleLock && !lockHolderIsAlive(lockPath)) {
-          brokeStaleLock = true;
-          try {
-            fs.unlinkSync(lockPath);
-          } catch {
-            // someone else got there first
-          }
-          continue;
+    if (acquireLock(lockPath, token) === null) {
+      // Break a lock left behind by a dead process, but only once, so two live
+      // waiters cannot ping-pong over each other's lock.
+      if (!brokeStaleLock && !lockHolderIsAlive(lockPath)) {
+        brokeStaleLock = true;
+        try {
+          fs.unlinkSync(lockPath);
+        } catch {
+          // someone else got there first
         }
-        sleepMs(LOCK_RETRY_MS);
         continue;
       }
-      throw error;
-    }
-
-    try {
-      fs.writeSync(fd, String(process.pid));
-    } catch {
-      // the lock still works without the pid; it just cannot be broken
+      sleepMs(LOCK_RETRY_MS);
+      continue;
     }
 
     try {
       return fn();
     } finally {
-      try {
-        fs.closeSync(fd);
-      } catch {
-      }
-      try {
-        fs.unlinkSync(lockPath);
-      } catch {
-      }
+      releaseLock(lockPath, token);
     }
   }
 

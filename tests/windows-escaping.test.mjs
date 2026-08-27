@@ -45,8 +45,10 @@ test("quoteWindowsArg escapes twice for batch targets", () => {
 
 test("buildCmdLine double-escapes arguments but not the target", () => {
   const line = buildCmdLine("C:\\tools\\thing.cmd", ["a & b"]);
-  const [target] = line.split(" ");
-  assert.ok(!target.includes("^^"), target);
+  assert.ok(line.includes('"C:\\tools\\thing.cmd"'), line);
+  // The target keeps real quotes so cmd's own tokenizer can see them; only the
+  // arguments are caret-escaped.
+  assert.ok(!line.includes('^"C:\\tools'), line);
   assert.ok(line.includes("^^"), line);
 });
 
@@ -88,6 +90,19 @@ describeWindows("arguments survive a .cmd shim byte for byte", async () => {
     }
     assert.deepEqual(parsed, ["--model", value], `round-trip changed ${JSON.stringify(value)}`);
   }
+});
+
+describeWindows("a batch target whose path contains a space still runs", async () => {
+  // Caret-escaping the quotes around the target hides them from cmd's own
+  // tokenizer, which then splits the path at the space. Regression guard.
+  const parent = makeTempDir();
+  const dir = path.join(parent, "spaced dir");
+  fs.mkdirSync(dir);
+  const batPath = installBatchEcho(dir);
+
+  const { code, stdout, stderr } = await runBatch(batPath, ["--model", "auto"], dir);
+  assert.equal(code, 0, `exit ${code}: ${stderr}`);
+  assert.deepEqual(JSON.parse(stdout.trim()), ["--model", "auto"]);
 });
 
 describeWindows("a quote-and-ampersand payload cannot execute a second command", async () => {

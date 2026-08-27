@@ -111,15 +111,32 @@ function normalizeMode(mode) {
   return normalized;
 }
 
+/**
+ * Slash commands hand us the user's argument string as a single argv entry, so
+ * it has to be tokenized here. Doing that only when it is the *sole* entry was
+ * wrong: `review --background '<all the flags>'` arrives as two entries, and the
+ * second one was then treated as one unknown option and dropped — silently
+ * losing `--base`, `--scope`, `--model`, `--mode` and any focus text.
+ *
+ * Any entry that carries whitespace is a packed string and gets split.
+ */
 function normalizeArgv(argv) {
-  if (argv.length === 1) {
-    const [raw] = argv;
-    if (!raw || !raw.trim()) {
-      return [];
+  const normalized = [];
+  for (const entry of argv) {
+    if (typeof entry !== "string") {
+      normalized.push(entry);
+      continue;
     }
-    return splitRawArgumentString(raw);
+    if (!entry.trim()) {
+      continue;
+    }
+    if (/\s/.test(entry)) {
+      normalized.push(...splitRawArgumentString(entry));
+      continue;
+    }
+    normalized.push(entry);
   }
-  return argv;
+  return normalized;
 }
 
 function parseCommandInput(argv, config = {}) {

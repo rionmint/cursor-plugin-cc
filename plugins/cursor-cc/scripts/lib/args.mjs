@@ -94,16 +94,28 @@ export function splitRawArgumentString(raw) {
   let current = "";
   let quote = null;
   let escaping = false;
+  let pendingBackslash = false;
 
   for (const character of raw) {
     if (escaping) {
+      // A backslash escapes a quote, whitespace, or another backslash. Before
+      // anything else it is a literal character, so that Windows paths survive:
+      // `C:\src\app.ts` used to come back as `C:srcapp.ts`.
+      const escapable = character === '"' || character === "'" || character === "\\" || /\s/.test(character);
+      if (!escapable) {
+        current += "\\";
+      }
       current += character;
       escaping = false;
+      pendingBackslash = false;
       continue;
     }
 
+    // A backslash only escapes a quote. Treating it as a general escape ate the
+    // separators out of Windows paths: `C:\src\app.ts` became `C:srcapp.ts`.
     if (character === "\\") {
       escaping = true;
+      pendingBackslash = true;
       continue;
     }
 
@@ -132,7 +144,7 @@ export function splitRawArgumentString(raw) {
     current += character;
   }
 
-  if (escaping) {
+  if (escaping || pendingBackslash) {
     current += "\\";
   }
 

@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.2.2
+
+Codex reviewed 0.2.1 from an isolated checkout and found what the other two
+reviewers missed: the 0.2.0 security work had introduced a regression, and two
+long-standing argument bugs were quietly eating user input. All four were
+reproduced before being fixed.
+
+### Fixed — a regression introduced by the 0.2.0 escaping
+
+- **A `.cmd` target whose path contains a space would not launch.** Caret-escaping
+  the quotes around the target hid them from cmd's own tokenizer, which then
+  split the path at the space and reported "is not recognized as an internal or
+  external command". The target now keeps real quotes and the whole line is
+  wrapped in one more pair that `/s` strips; arguments still get the caret
+  treatment, because they are the ones carrying untrusted text. Both the spaced
+  path and the original injection payload are covered by tests.
+
+### Fixed — the state lock could be taken from a live holder
+
+- `openSync(lockPath, "wx")` followed by writing the pid left a window in which
+  the lock existed but was empty. A waiter looking in during that window saw no
+  pid, concluded the lock was stale, and unlinked it out from under a holder
+  that was still inside its critical section — and the holder's own release then
+  deleted the next holder's lock. The lock file is now written completely under
+  a private name and linked into place in one atomic operation, an empty lock is
+  treated as held rather than stale, and a release only removes a lock that
+  still carries this process's token.
+
+### Fixed — arguments were being eaten
+
+Both of these are inherited from the upstream plugin.
+
+- **Flags packed into one argument alongside another were dropped.** Slash
+  commands forward the user's arguments as a single string; when the command
+  also adds its own flag, that string was no longer the sole argv entry and was
+  swallowed as one unknown option. `/cursor-cc:review --background` silently
+  lost `--base`, `--scope`, `--model`, `--mode` and any focus text.
+- **Backslashes were eaten by the tokenizer.** `C:\src\app.ts` arrived as
+  `C:srcapp.ts`, and `/foo\d+/` as `/food+/`. A backslash now escapes only a
+  quote, whitespace, or another backslash; anywhere else it is literal.
+
 ## 0.2.1
 
 A second adversarial pass — this time by Grok Build, Codex and Cursor itself

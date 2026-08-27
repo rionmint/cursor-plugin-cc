@@ -77,12 +77,23 @@ export function quoteWindowsArg(value, doubleEscape = false) {
   return text;
 }
 
-/** Build the `cmd /d /s /c` line for a batch-file target and its arguments. */
+/**
+ * Build the `cmd /d /s /c` line for a batch-file target and its arguments.
+ *
+ * The target and the arguments need opposite treatment, which is easy to get
+ * wrong: caret-escaping the quotes around the target hides them from cmd's own
+ * tokenizer, so a path containing a space is split at the space and the run
+ * fails with "is not recognized as an internal or external command". The target
+ * therefore keeps real quotes, and the whole line is wrapped in one more pair
+ * that `/s` strips before parsing the rest. Arguments still get the caret
+ * treatment, because they are the ones carrying untrusted text.
+ *
+ * A Windows path cannot contain `"`, so quoting the target is unambiguous.
+ */
 export function buildCmdLine(resolvedTarget, args = []) {
-  return [
-    quoteWindowsArg(resolvedTarget),
-    ...args.map((arg) => quoteWindowsArg(arg, true))
-  ].join(" ");
+  const target = `"${String(resolvedTarget).replace(/"/g, "")}"`;
+  const rest = args.map((arg) => quoteWindowsArg(arg, true));
+  return `"${[target, ...rest].join(" ")}"`;
 }
 
 /**
