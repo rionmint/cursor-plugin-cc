@@ -111,7 +111,9 @@ test("plugin surfaces use /cursor-cc names and the cursor-agent binary, not code
 
 test("runtime skill only forwards run once", () => {
   const runtimeSkill = read("skills/cursor-delegate-runtime/SKILL.md");
-  assert.match(runtimeSkill, /cursor-bridge\.mjs" run "<raw arguments>"/);
+  assert.match(runtimeSkill, /cursor-bridge\.mjs" run '<raw arguments>'/);
+  // The forwarded string reaches a shell, so it must be single-quoted.
+  assert.doesNotMatch(runtimeSkill, /run "<raw arguments>"/);
   assert.match(runtimeSkill, /Use `run` for every delegate request/i);
   assert.match(runtimeSkill, /run --resume-last/i);
   assert.match(runtimeSkill, /Do not call `check`, `review`, `critique`, `runs`, `show`, or `stop`/);

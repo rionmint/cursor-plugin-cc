@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Cursor CLI <-> Claude Code bridge plugins for review, critique, and delegation.",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {
       "name": "cursor-cc",
       "description": "Cursor CLI <-> Claude Code bridge for review, critique, and delegation.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "rionmint"
       },

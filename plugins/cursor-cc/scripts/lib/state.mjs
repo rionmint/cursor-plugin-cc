@@ -72,7 +72,19 @@ export function resolveJobsDir(cwd) {
 }
 
 export function ensureStateDir(cwd) {
-  fs.mkdirSync(resolveJobsDir(cwd), { recursive: true });
+  // The run directory holds prompts, repository excerpts and pids. On a shared
+  // machine the fallback root is under the system temp directory, so it is
+  // created owner-only rather than with the default 0o777 & ~umask.
+  fs.mkdirSync(resolveJobsDir(cwd), { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32") {
+    for (const dir of [resolveStateDir(cwd), resolveJobsDir(cwd)]) {
+      try {
+        fs.chmodSync(dir, 0o700);
+      } catch {
+        // best effort; a pre-existing directory we do not own stays as it is
+      }
+    }
+  }
 }
 
 function writeFileAtomic(filePath, content) {
@@ -82,13 +94,45 @@ function writeFileAtomic(filePath, content) {
     dir,
     `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`
   );
-  fs.writeFileSync(tempPath, content, "utf8");
+  fs.writeFileSync(tempPath, content, { encoding: "utf8", mode: 0o600 });
   fs.renameSync(tempPath, filePath);
+}
+
+/**
+ * Whether the process that holds the lock file is still running.
+ *
+ * `openSync(..., "wx")` is atomic, which is the property that matters, but a
+ * holder that dies without unlinking leaves the lock behind forever and every
+ * later save — including `/cursor-cc:stop` — fails. So the holder writes its own
+ * pid into the lock and a waiter is allowed to break a lock whose owner is gone.
+ */
+function lockHolderIsAlive(lockPath) {
+  let raw;
+  try {
+    raw = fs.readFileSync(lockPath, "utf8");
+  } catch {
+    return false;
+  }
+  const pid = Number.parseInt(String(raw).trim(), 10);
+  if (!Number.isInteger(pid) || pid <= 0) {
+    // An empty or unreadable lock is from an older version or a crash midway.
+    return false;
+  }
+  if (pid === process.pid) {
+    return true;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
 }
 
 export function withStateLock(cwd, fn) {
   ensureStateDir(cwd);
   const lockPath = path.join(resolveStateDir(cwd), LOCK_FILE_NAME);
+  let brokeStaleLock = false;
 
   for (let attempt = 0; attempt < LOCK_MAX_ATTEMPTS; attempt += 1) {
     let fd = null;
@@ -96,10 +140,27 @@ export function withStateLock(cwd, fn) {
       fd = fs.openSync(lockPath, "wx");
     } catch (error) {
       if (error?.code === "EEXIST") {
+        // Break a lock left behind by a dead process, but only once, so two
+        // live waiters cannot ping-pong over each other's lock.
+        if (!brokeStaleLock && !lockHolderIsAlive(lockPath)) {
+          brokeStaleLock = true;
+          try {
+            fs.unlinkSync(lockPath);
+          } catch {
+            // someone else got there first
+          }
+          continue;
+        }
         sleepMs(LOCK_RETRY_MS);
         continue;
       }
       throw error;
+    }
+
+    try {
+      fs.writeSync(fd, String(process.pid));
+    } catch {
+      // the lock still works without the pid; it just cannot be broken
     }
 
     try {
@@ -116,7 +177,9 @@ export function withStateLock(cwd, fn) {
     }
   }
 
-  throw new Error(`Timed out acquiring state lock at ${lockPath}`);
+  throw new Error(
+    `Timed out acquiring state lock at ${lockPath}. If no other run is active, delete that file.`
+  );
 }
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
@@ -344,9 +407,42 @@ function pruneJobs(jobs) {
     .slice(0, MAX_JOBS);
 }
 
-function removeFileIfExists(filePath) {
-  if (filePath && fs.existsSync(filePath)) {
+/**
+ * A job record carries a `logFile` path, and pruning deletes it. The record is
+ * JSON on disk, so that path is not trustworthy: a tampered state file could
+ * name any file on the machine and have the plugin delete it on the next save.
+ * Only paths that really sit inside this workspace's run directory are removed.
+ */
+function isInsideJobsDir(cwd, filePath) {
+  if (!filePath) {
+    return false;
+  }
+  try {
+    const jobsDir = fs.realpathSync(resolveJobsDir(cwd));
+    // realpath the parent, not the file: the file is about to be deleted and a
+    // symlink at the leaf must not redirect the unlink.
+    const target = path.resolve(filePath);
+    const parent = fs.realpathSync(path.dirname(target));
+    const resolved = path.join(parent, path.basename(target));
+    const relative = path.relative(jobsDir, resolved);
+    return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+  } catch {
+    return false;
+  }
+}
+
+function removeJobLogIfOwned(cwd, filePath) {
+  if (!isInsideJobsDir(cwd, filePath)) {
+    return;
+  }
+  try {
+    const stat = fs.lstatSync(filePath);
+    if (!stat.isFile()) {
+      return;
+    }
     fs.unlinkSync(filePath);
+  } catch {
+    // already gone, or not ours to remove
   }
 }
 
@@ -369,7 +465,7 @@ function saveStateUnlocked(cwd, state) {
       continue;
     }
     removeJobFile(resolveJobFile(cwd, job.id));
-    removeFileIfExists(job.logFile);
+    removeJobLogIfOwned(cwd, job.logFile);
   }
 
   writeFileAtomic(resolveStateFile(cwd), `${JSON.stringify(nextState, null, 2)}\n`);
@@ -447,12 +543,28 @@ function removeJobFile(jobFile) {
   }
 }
 
+// Run ids reach these helpers straight from slash-command arguments
+// (`/cursor-cc:show <run-id>` and friends), and they become a path component.
+// Without this gate an id of `../../x` reads and writes outside the run
+// directory. generateJobId only ever produces `<prefix>-<base36>-<base36>`.
+const JOB_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+export function assertSafeJobId(jobId) {
+  const id = String(jobId ?? "");
+  if (!JOB_ID_PATTERN.test(id) || id.includes("..")) {
+    throw new Error(`Invalid run id: ${JSON.stringify(jobId)}`);
+  }
+  return id;
+}
+
 export function resolveJobLogFile(cwd, jobId) {
+  const safeId = assertSafeJobId(jobId);
   ensureStateDir(cwd);
-  return path.join(resolveJobsDir(cwd), `${jobId}.log`);
+  return path.join(resolveJobsDir(cwd), `${safeId}.log`);
 }
 
 export function resolveJobFile(cwd, jobId) {
+  const safeId = assertSafeJobId(jobId);
   ensureStateDir(cwd);
-  return path.join(resolveJobsDir(cwd), `${jobId}.json`);
+  return path.join(resolveJobsDir(cwd), `${safeId}.json`);
 }

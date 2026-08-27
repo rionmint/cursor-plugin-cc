@@ -728,6 +728,13 @@ async function handleTask(argv) {
     throw new Error("Choose either --resume/--resume-last or --fresh.");
   }
   const write = Boolean(options.write);
+  if (write && mode) {
+    // `--write` drops the read-only mode. Silently honouring one and discarding
+    // the other would turn an explicit read-only request into a write run.
+    throw new Error(
+      `--write cannot be combined with --mode ${mode}. --mode ${mode} is read-only; drop one of the two.`
+    );
+  }
   const taskMetadata = buildTaskRunMetadata({
     prompt,
     resumeLast
@@ -914,11 +921,16 @@ function handleTaskResumeCandidate(argv) {
   outputCommandResult(payload, rendered, options.json);
 }
 
+// Pids are read back from a json file, and the operating system reuses pids.
+// A process is only signalled when its command line still looks like a run this
+// plugin started; anything else is left alone and reported as skipped.
+const OUR_PROCESS_MARKERS = ["cursor-agent", "cursor-bridge.mjs"];
+
 function terminateJobProcessTrees(job) {
   const targets = resolveJobKillTargets(job);
   const results = [];
   for (const pid of targets) {
-    results.push({ pid, ...terminateProcessTree(pid) });
+    results.push({ pid, ...terminateProcessTree(pid, { expect: OUR_PROCESS_MARKERS }) });
   }
   if (results.length === 0) {
     return { attempted: false, delivered: false, method: null, results: [] };

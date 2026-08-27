@@ -7,6 +7,10 @@ import { binaryAvailable, runCommand, spawnCli } from "./process.mjs";
 export const DEFAULT_CONTINUE_PROMPT =
   "Continue from the current thread state. Pick the next highest-value step and follow through until the task is resolved.";
 
+// Upper bound on how much a single run may print back to us. The bridge holds
+// this in memory, so an unbounded child would be a denial of service.
+const MAX_AGENT_OUTPUT_BYTES = 32 * 1024 * 1024;
+
 const DEFAULT_BINARY = "cursor-agent";
 const BINARY_ENV = "CURSOR_AGENT_BINARY";
 
@@ -169,11 +173,48 @@ function emitProgress(onProgress, message, phase = null, extra = {}) {
  * - a session id cannot be assigned up front; it is reported back in the
  *   json envelope as `session_id`
  */
+// Flag values reach the child as separate argv entries, so a value that starts
+// with `-` is read by Cursor's own parser as another flag. `--model --force`
+// would quietly turn a read-only review into a write-capable run, so every
+// value that goes next to a flag is checked before it is pushed.
+const VALUE_PATTERNS = {
+  model: /^[A-Za-z0-9][A-Za-z0-9._:@[\]=,/-]{0,127}$/,
+  mode: /^(ask|plan)$/,
+  session: /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/,
+  outputFormat: /^(text|json|stream-json)$/
+};
+
+export function assertSafeCliValue(kind, value) {
+  const text = String(value ?? "");
+  const pattern = VALUE_PATTERNS[kind];
+  if (!pattern || !pattern.test(text)) {
+    throw new Error(`Refusing to pass an unsafe ${kind} value to cursor-agent: ${JSON.stringify(value)}`);
+  }
+  return text;
+}
+
+/** A workspace path is free-form, but it must never look like a flag. */
+export function assertSafeWorkspace(value) {
+  const text = String(value ?? "");
+  if (!text || text.startsWith("-") || /[\r\n\0]/.test(text)) {
+    throw new Error(`Refusing to pass an unsafe workspace path to cursor-agent: ${JSON.stringify(value)}`);
+  }
+  return text;
+}
+
 export function buildHeadlessArgs(options = {}) {
+  if (options.force && options.mode) {
+    // These two say opposite things about whether the run may edit files.
+    // Picking one silently is how a read-only request becomes a write run.
+    throw new Error(
+      `Refusing to run with both a read-only mode (${options.mode}) and write access.`
+    );
+  }
+
   const args = [];
 
   if (options.resumeSessionId) {
-    args.push("--resume", options.resumeSessionId);
+    args.push("--resume", assertSafeCliValue("session", options.resumeSessionId));
   } else if (options.continueLast) {
     args.push("--continue");
   }
@@ -181,16 +222,16 @@ export function buildHeadlessArgs(options = {}) {
   args.push("--print");
 
   if (options.cwd) {
-    args.push("--workspace", options.cwd);
+    args.push("--workspace", assertSafeWorkspace(options.cwd));
   }
   if (options.mode) {
-    args.push("--mode", options.mode);
+    args.push("--mode", assertSafeCliValue("mode", options.mode));
   }
   if (options.model) {
-    args.push("--model", options.model);
+    args.push("--model", assertSafeCliValue("model", options.model));
   }
 
-  const outputFormat = options.outputFormat || "text";
+  const outputFormat = assertSafeCliValue("outputFormat", options.outputFormat || "text");
   args.push("--output-format", outputFormat);
 
   if (options.streamPartialOutput && outputFormat === "stream-json") {
@@ -295,16 +336,33 @@ export function runHeadlessAgent(cwd, options = {}) {
       pid: agentPid
     });
 
+    // A stuck or hostile child can print forever. Keep a bounded window rather
+    // than growing a string until the bridge runs out of memory.
+    const maxOutputBytes = options.maxOutputBytes ?? MAX_AGENT_OUTPUT_BYTES;
     let stdout = "";
     let stderr = "";
+    let truncated = false;
+
+    const append = (current, chunk) => {
+      if (current.length >= maxOutputBytes) {
+        truncated = true;
+        return current;
+      }
+      const next = current + chunk;
+      if (next.length <= maxOutputBytes) {
+        return next;
+      }
+      truncated = true;
+      return next.slice(0, maxOutputBytes);
+    };
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
-      stdout += chunk;
+      stdout = append(stdout, chunk);
     });
     child.stderr.on("data", (chunk) => {
-      stderr += chunk;
+      stderr = append(stderr, chunk);
     });
 
     child.on("error", (error) => {
@@ -328,6 +386,7 @@ export function runHeadlessAgent(cwd, options = {}) {
         signal,
         stdout,
         stderr,
+        truncated,
         sessionId,
         threadId: sessionId,
         agentPid,

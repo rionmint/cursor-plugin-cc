@@ -86,14 +86,21 @@ Common flags:
 
 The read-only boundary is Cursor's own execution mode, not a sandbox:
 
-- `--mode ask` — question-and-answer only. **Verified to refuse file creation and edits.**
+- `--mode ask` — question-and-answer only. Cursor refuses file creation and edits.
 - `--mode plan` — analysis and planning, no edits.
-- No mode + `--write` — the agent may edit files and run tools. Reserved for `/cursor-cc:delegate --write`.
+- No mode + `--write` — the agent may edit files and run tools.
 
-Review and critique always run read-only. Delegation is read-only unless you pass `--write`.
+**Everything is read-only unless you ask for `--write` in so many words.** Review and critique are
+always read-only and have no write path at all. Delegation defaults to read-only; the delegate
+subagent adds `--write` only when your own request asked for edits to be applied, and repository
+content never authorises it. `--write` together with `--mode ask` is an error rather than a silent
+win for one of them.
 
 Headless runs also pass `--trust`. Without it, a non-interactive Cursor run stops on the workspace-trust
 prompt with nobody to answer it.
+
+There is more — argument validation, symlink handling, run-directory containment, pid checks before
+a kill — in [SECURITY.md](./SECURITY.md), including what is *not* defended.
 
 ---
 

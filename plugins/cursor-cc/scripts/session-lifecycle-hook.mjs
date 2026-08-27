@@ -26,7 +26,15 @@ function appendEnvVar(name, value) {
   if (!process.env.CLAUDE_ENV_FILE || value == null || value === "") {
     return;
   }
-  fs.appendFileSync(process.env.CLAUDE_ENV_FILE, `export ${name}=${shellEscape(value)}\n`, "utf8");
+  // Each entry is one `export` line. A value carrying a newline would append a
+  // second line of its own choosing to a file the host later sources, so a
+  // value with a line break is dropped rather than escaped.
+  const text = String(value);
+  if (/[\r\n\0]/.test(text)) {
+    process.stderr.write(`[cursor-cc] refusing to export ${name}: value contains a line break\n`);
+    return;
+  }
+  fs.appendFileSync(process.env.CLAUDE_ENV_FILE, `export ${name}=${shellEscape(text)}\n`, "utf8");
 }
 
 function cleanupSessionJobs(cwd, sessionId) {
@@ -63,7 +71,7 @@ function cleanupSessionJobs(cwd, sessionId) {
       const killTargets = resolveJobKillTargets(job);
       for (const pid of killTargets) {
         try {
-          terminateProcessTree(pid);
+          terminateProcessTree(pid, { expect: ["cursor-agent", "cursor-bridge.mjs"] });
         } catch {
         }
       }

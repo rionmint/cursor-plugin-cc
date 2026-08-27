@@ -297,13 +297,22 @@ test("stop terminates a tracked sleeper process and marks run cancelled", () => 
   run("git", ["add", "a.txt"], { cwd: repo });
   run("git", ["commit", "-m", "init"], { cwd: repo });
 
-  const agent = spawn(process.execPath, ["-e", "setInterval(()=>{}, 1000)"], {
+  // Stopping a run verifies that the pid still looks like something this plugin
+  // started before signalling it, so the stand-ins have to carry a matching
+  // command line rather than being anonymous `node -e` processes.
+  const agentStub = path.join(repo, "cursor-agent-stub.mjs");
+  const bridgeStub = path.join(repo, "cursor-bridge.mjs.stub.mjs");
+  const stubSource = "setInterval(() => {}, 1000);";
+  fs.writeFileSync(agentStub, stubSource, "utf8");
+  fs.writeFileSync(bridgeStub, stubSource, "utf8");
+
+  const agent = spawn(process.execPath, [agentStub], {
     cwd: repo,
     stdio: "ignore",
     detached: true
   });
   agent.unref();
-  const bridge = spawn(process.execPath, ["-e", "setInterval(()=>{}, 1000)"], {
+  const bridge = spawn(process.execPath, [bridgeStub], {
     cwd: repo,
     stdio: "ignore",
     detached: true

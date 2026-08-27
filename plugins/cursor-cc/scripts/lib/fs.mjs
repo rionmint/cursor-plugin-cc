@@ -32,9 +32,37 @@ export function isProbablyText(buffer) {
   return true;
 }
 
-export function readStdinIfPiped() {
+// A piped prompt is read wholesale into memory, so it needs a ceiling.
+export const MAX_PIPED_STDIN_BYTES = 8 * 1024 * 1024;
+
+export function readStdinIfPiped(maxBytes = MAX_PIPED_STDIN_BYTES) {
   if (process.stdin.isTTY) {
     return "";
   }
-  return fs.readFileSync(0, "utf8");
+  const chunks = [];
+  let total = 0;
+  const buffer = Buffer.alloc(64 * 1024);
+  for (;;) {
+    let read;
+    try {
+      read = fs.readSync(0, buffer, 0, buffer.length, null);
+    } catch (error) {
+      if (error?.code === "EAGAIN") {
+        continue;
+      }
+      if (error?.code === "EOF") {
+        break;
+      }
+      throw error;
+    }
+    if (read === 0) {
+      break;
+    }
+    total += read;
+    if (total > maxBytes) {
+      throw new Error(`Piped input exceeds the ${maxBytes} byte limit.`);
+    }
+    chunks.push(Buffer.from(buffer.subarray(0, read)));
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }

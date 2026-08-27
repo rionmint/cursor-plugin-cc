@@ -41,12 +41,48 @@ export function resolveExecutable(command, env = process.env) {
 }
 
 /**
- * Quote a single token for a cmd.exe command line. Wrapping in double quotes is
- * what stops cmd from treating `&`, `|`, `>` and friends as operators.
+ * Escape a single token for a cmd.exe command line.
+ *
+ * Double quotes alone are NOT enough. cmd counts quotes itself, so a token that
+ * contains a `"` closes the quoted region early and everything after it is
+ * parsed as cmd syntax — `&`, `|`, `>` and friends become operators again. That
+ * is a command-injection hole, and it is reachable from any value that reaches
+ * argv (a model id, a session id, a path).
+ *
+ * So: quote the token for the child's own CRT parser first, then caret-escape
+ * every character cmd treats as special — the quotes included. cmd strips the
+ * carets before handing the line to the child, which sees a normally quoted
+ * argument, while cmd itself never sees an unescaped operator.
+ *
+ * A `.bat` / `.cmd` target needs that escaping applied TWICE. The batch file
+ * expands `%*` (or `%1`) into its own line and cmd re-parses the result, so a
+ * single round of carets is consumed by the outer parse and the metacharacters
+ * come back to life inside the script. This is the CVE-2024-24576 class of bug.
+ *
+ * This mirrors the escaping used by cross-spawn, which is the de-facto standard
+ * fix for this on Windows.
  */
-export function quoteWindowsArg(value) {
-  const text = String(value ?? "");
-  return `"${text.replace(/(\*)"/g, '$1$1\\"').replace(/(\*)$/, "$1$1")}"`;
+const CMD_META_CHARACTERS = /[<>"^|&%!()]/g;
+
+export function quoteWindowsArg(value, doubleEscape = false) {
+  let text = String(value ?? "");
+  // Escape embedded quotes and any trailing backslashes for the CRT parser.
+  text = text.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1");
+  text = `"${text}"`;
+  // Then hide every cmd metacharacter, including the quotes we just added.
+  text = text.replace(CMD_META_CHARACTERS, "^$&");
+  if (doubleEscape) {
+    text = text.replace(CMD_META_CHARACTERS, "^$&");
+  }
+  return text;
+}
+
+/** Build the `cmd /d /s /c` line for a batch-file target and its arguments. */
+export function buildCmdLine(resolvedTarget, args = []) {
+  return [
+    quoteWindowsArg(resolvedTarget),
+    ...args.map((arg) => quoteWindowsArg(arg, true))
+  ].join(" ");
 }
 
 /**
@@ -64,7 +100,7 @@ export function spawnCli(command, args = [], options = {}) {
   const resolved = resolveExecutable(command, env) ?? command;
 
   if (process.platform === "win32" && /\.(cmd|bat)$/i.test(resolved)) {
-    const line = `"${[resolved, ...args].map(quoteWindowsArg).join(" ")}"`;
+    const line = buildCmdLine(resolved, args);
     return spawn(env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", line], {
       ...options,
       windowsVerbatimArguments: true
@@ -101,7 +137,7 @@ export function runCommand(command, args = [], options = {}) {
     const resolved = resolveExecutable(command, env);
     if (resolved && /\.(cmd|bat)$/i.test(resolved)) {
       target = env.ComSpec ?? "cmd.exe";
-      finalArgs = ["/d", "/s", "/c", `"${[resolved, ...args].map(quoteWindowsArg).join(" ")}"`];
+      finalArgs = ["/d", "/s", "/c", buildCmdLine(resolved, args)];
       windowsVerbatimArguments = true;
     }
   }
@@ -210,9 +246,69 @@ function tryKill(killImpl, pid, signal) {
   }
 }
 
+/**
+ * The command line of a running process, or null when it cannot be read.
+ *
+ * Pids come out of a json file on disk, and the operating system reuses pids.
+ * Without a check, stopping a run that already exited can signal whatever now
+ * holds that number — the user's editor, a shell, another Claude session.
+ */
+export function processCommandLine(pid, options = {}) {
+  const runCommandImpl = options.runCommandImpl ?? runCommand;
+  const platform = options.platform ?? process.platform;
+
+  if (platform === "win32") {
+    const result = runCommandImpl(
+      "powershell",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `(Get-CimInstance Win32_Process -Filter \"ProcessId=${Number(pid)}\").CommandLine`
+      ],
+      { env: options.env }
+    );
+    if (result.error || result.status !== 0) {
+      return null;
+    }
+    const text = String(result.stdout ?? "").trim();
+    return text || null;
+  }
+
+  const result = runCommandImpl("ps", ["-p", String(Number(pid)), "-o", "args="], { env: options.env });
+  if (result.error || result.status !== 0) {
+    return null;
+  }
+  const text = String(result.stdout ?? "").trim();
+  return text || null;
+}
+
+/**
+ * True when the process still looks like something this plugin started.
+ * Unreadable command lines are treated as a mismatch: refusing to kill is the
+ * safe failure, and the run is still marked cancelled either way.
+ */
+export function processLooksLikeOurs(pid, expect, options = {}) {
+  if (!expect) {
+    return true;
+  }
+  const commandLine = processCommandLine(pid, options);
+  if (!commandLine) {
+    return false;
+  }
+  const patterns = Array.isArray(expect) ? expect : [expect];
+  return patterns.some((pattern) =>
+    pattern instanceof RegExp ? pattern.test(commandLine) : commandLine.includes(String(pattern))
+  );
+}
+
 export function terminateProcessTree(pid, options = {}) {
   if (!Number.isFinite(pid)) {
     return { attempted: false, delivered: false, method: null };
+  }
+
+  if (options.expect && !processLooksLikeOurs(pid, options.expect, options)) {
+    return { attempted: false, delivered: false, method: null, reason: "identity-mismatch" };
   }
 
   const platform = options.platform ?? process.platform;

@@ -7,7 +7,7 @@ allowed-tools: Bash(node:*), AskUserQuestion
 Run:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/cursor-bridge.mjs" check --json $ARGUMENTS
+node "${CLAUDE_PLUGIN_ROOT}/scripts/cursor-bridge.mjs" check --json
 ```
 
 If the result says Cursor is unavailable:

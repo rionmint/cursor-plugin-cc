@@ -96,9 +96,18 @@ test("buildHeadlessArgs resumes an existing session instead of assigning one", (
   assert.ok(!args.includes("--session-id"));
 });
 
-test("buildHeadlessArgs only adds --force for write runs without a read-only mode", () => {
+test("buildHeadlessArgs adds --force only for a write run", () => {
   assert.ok(buildHeadlessArgs({ force: true }).includes("--force"));
-  assert.ok(!buildHeadlessArgs({ force: true, mode: "ask" }).includes("--force"));
+  assert.ok(!buildHeadlessArgs({ mode: "ask" }).includes("--force"));
+});
+
+test("asking for write access and a read-only mode at once is an error", () => {
+  // Silently honouring one of the two is how a read-only request becomes a
+  // write run, so the combination is refused instead.
+  assert.throws(
+    () => buildHeadlessArgs({ force: true, mode: "ask" }),
+    /both a read-only mode \(ask\) and write access/
+  );
 });
 
 test("runHeadlessAgent captures stdout and session id from fake cursor-agent", async () => {

@@ -41,10 +41,16 @@ Argument handling:
 - `/cursor-cc:review` does not support staged-only review, unstaged-only review, or extra focus text.
 - If the user needs a tougher design challenge pass, they should use `/cursor-cc:critique`.
 
+Argument handling (security):
+- The forwarded argument string goes onto a shell command line. Before running,
+  reject the request if the user text contains a single quote, a backtick, `$(`,
+  a newline, or a NUL. Say why and stop; do not try to escape it yourself.
+- Always wrap the argument string in single quotes so the shell cannot expand it.
+
 Foreground flow:
 - Run:
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/cursor-bridge.mjs" review "$ARGUMENTS"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/cursor-bridge.mjs" review '$ARGUMENTS'
 ```
 - Return the command stdout verbatim, exactly as-is.
 - Do not paraphrase, summarize, or add commentary before or after it.
@@ -55,7 +61,7 @@ Background flow:
 - Launch with `Bash` (Claude may still use `run_in_background: true` for the short enqueue call; the long-running work is the bridge `run-worker`):
 ```typescript
 Bash({
-  command: `node "${CLAUDE_PLUGIN_ROOT}/scripts/cursor-bridge.mjs" review --background "$ARGUMENTS"`,
+  command: `node "${CLAUDE_PLUGIN_ROOT}/scripts/cursor-bridge.mjs" review --background '$ARGUMENTS'`,
   description: "Cursor review",
   run_in_background: true
 })

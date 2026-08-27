@@ -198,19 +198,48 @@ function formatSection(title, body) {
   return [`## ${title}`, "", body.trim() ? body.trim() : "(none)", ""].join("\n");
 }
 
+// Untracked file bodies are inlined into the prompt that goes to the agent, so
+// a repository can choose what ends up there. A symlink is itself an untracked
+// file, and `.gitignore` does not help: `notes.md -> ~/.ssh/id_rsa` would have
+// the private key read and sent. Names that usually hold credentials are held
+// back for the same reason, even when they are ordinary files.
+const CREDENTIAL_FILE_PATTERN =
+  /(^|[/\\])(\.env(\..+)?|\.netrc|\.npmrc|\.pgpass|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519)|.*\.(pem|key|p12|pfx|keystore))$/i;
+
 function formatUntrackedFile(cwd, relativePath) {
   const absolutePath = path.join(cwd, relativePath);
+
+  if (CREDENTIAL_FILE_PATTERN.test(relativePath)) {
+    return `### ${relativePath}\n(skipped: name looks like a credential file)`;
+  }
+
   let stat;
   try {
-    stat = fs.statSync(absolutePath);
+    // lstat, not stat: this must describe the link itself, not its target.
+    stat = fs.lstatSync(absolutePath);
   } catch {
     return `### ${relativePath}\n(skipped: broken symlink or unreadable file)`;
   }
-  if (stat.isDirectory()) {
-    return `### ${relativePath}\n(skipped: directory)`;
+  if (stat.isSymbolicLink()) {
+    return `### ${relativePath}\n(skipped: symlink)`;
+  }
+  if (!stat.isFile()) {
+    return `### ${relativePath}\n(skipped: ${stat.isDirectory() ? "directory" : "not a regular file"})`;
   }
   if (stat.size > MAX_UNTRACKED_BYTES) {
     return `### ${relativePath}\n(skipped: ${stat.size} bytes exceeds ${MAX_UNTRACKED_BYTES} byte limit)`;
+  }
+
+  // Belt and braces: a parent component could still be a link out of the tree.
+  try {
+    const realPath = fs.realpathSync(absolutePath);
+    const realRoot = fs.realpathSync(cwd);
+    const relative = path.relative(realRoot, realPath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      return `### ${relativePath}\n(skipped: resolves outside the repository)`;
+    }
+  } catch {
+    return `### ${relativePath}\n(skipped: broken symlink or unreadable file)`;
   }
 
   let buffer;

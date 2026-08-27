@@ -22,21 +22,21 @@ function makeVersionFixture() {
   const root = makeTempDir();
 
   writeJson(path.join(root, "package.json"), {
-    name: "@xai/cursor-cc-plugin-cc",
-    version: "0.1.0"
+    name: "cursor-plugin-cc",
+    version: "0.2.0"
   });
   writeJson(path.join(root, "plugins", "cursor-cc", ".claude-plugin", "plugin.json"), {
     name: "cursor-cc",
-    version: "0.1.0"
+    version: "0.2.0"
   });
   writeJson(path.join(root, ".claude-plugin", "marketplace.json"), {
     metadata: {
-      version: "0.1.0"
+      version: "0.2.0"
     },
     plugins: [
       {
         name: "cursor-cc",
-        version: "0.1.0"
+        version: "0.2.0"
       }
     ]
   });
@@ -60,9 +60,10 @@ test("bump-version updates every release manifest", () => {
 
 test("bump-version check mode reports stale metadata", () => {
   const root = makeVersionFixture();
+  // Deliberately out of step with the rest of the fixture.
   writeJson(path.join(root, "package.json"), {
-    name: "@xai/cursor-cc-plugin-cc",
-    version: "0.2.0"
+    name: "cursor-plugin-cc",
+    version: "9.9.9"
   });
 
   const result = run("node", [SCRIPT, "--root", root, "--check"], {
@@ -74,7 +75,7 @@ test("bump-version check mode reports stale metadata", () => {
   assert.match(result.stderr, /\.claude-plugin\/marketplace\.json metadata\.version/);
 });
 
-test("repo manifests are in sync at 0.1.0", () => {
-  const result = run("node", [SCRIPT, "--check", "0.1.0"], { cwd: ROOT });
+test("repo manifests are in sync at 0.2.0", () => {
+  const result = run("node", [SCRIPT, "--check", "0.2.0"], { cwd: ROOT });
   assert.equal(result.status, 0, result.stderr);
 });
