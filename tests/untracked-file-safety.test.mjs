@@ -75,3 +75,15 @@ test("an ordinary untracked text file is still inlined", () => {
   const content = reviewText(repo);
   assert.match(content, /ORDINARY_UNTRACKED_CONTENT/);
 });
+
+test("env templates are shared on purpose and stay visible", () => {
+  const repo = setupRepo();
+  for (const name of [".env.example", ".env.sample", ".env.template"]) {
+    fs.writeFileSync(path.join(repo, name), `TEMPLATE_BODY_${name.slice(5)}\n`);
+  }
+
+  const content = reviewText(repo);
+  for (const suffix of ["example", "sample", "template"]) {
+    assert.match(content, new RegExp(`TEMPLATE_BODY_${suffix}`), `.env.${suffix} should be inlined`);
+  }
+});

@@ -206,10 +206,14 @@ function formatSection(title, body) {
 const CREDENTIAL_FILE_PATTERN =
   /(^|[/\\])(\.env(\..+)?|\.netrc|\.npmrc|\.pgpass|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519)|.*\.(pem|key|p12|pfx|keystore))$/i;
 
+// `.env.example` and friends exist to be shared, and a reviewer usually wants to
+// see them. They are the one family the pattern above over-matches.
+const CREDENTIAL_TEMPLATE_PATTERN = /(^|[/\\])\.env\.(example|sample|template|dist)$/i;
+
 function formatUntrackedFile(cwd, relativePath) {
   const absolutePath = path.join(cwd, relativePath);
 
-  if (CREDENTIAL_FILE_PATTERN.test(relativePath)) {
+  if (CREDENTIAL_FILE_PATTERN.test(relativePath) && !CREDENTIAL_TEMPLATE_PATTERN.test(relativePath)) {
     return `### ${relativePath}\n(skipped: name looks like a credential file)`;
   }
 
