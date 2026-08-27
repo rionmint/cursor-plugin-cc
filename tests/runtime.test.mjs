@@ -165,7 +165,7 @@ test("review forwards --model and --mode to cursor-agent", () => {
   assert.equal(result.status, 0, result.stderr);
   const argv = lastFakeCursorArgv(fakeCursorLog);
   assert.ok(argv.includes("--model"));
-  assert.equal(argv[argv.indexOf("--model") + 1], "cursor-cc");
+  assert.equal(argv[argv.indexOf("--model") + 1], "auto");
   assert.ok(argv.includes("--mode"));
   assert.equal(argv[argv.indexOf("--mode") + 1], "plan");
 });
@@ -185,7 +185,7 @@ test("critique forwards --model and --mode to cursor-agent", () => {
   assert.equal(result.status, 0, result.stderr);
   const argv = lastFakeCursorArgv(fakeCursorLog);
   assert.ok(argv.includes("--model"));
-  assert.equal(argv[argv.indexOf("--model") + 1], "cursor-cc");
+  assert.equal(argv[argv.indexOf("--model") + 1], "auto");
   assert.ok(argv.includes("--mode"));
   assert.equal(argv[argv.indexOf("--mode") + 1], "plan");
 });
