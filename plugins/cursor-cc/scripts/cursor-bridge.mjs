@@ -633,6 +633,18 @@ export function enqueueBackgroundJob(cwd, job, request, options = {}) {
       logFile,
       request
     });
+  } else {
+    // No pid means the worker never started. Leaving the record `queued` would
+    // show a run that is waiting for something that will never happen.
+    const message = "Failed to start the background worker.";
+    appendLogLine(logFile, message);
+    claimJobTerminal(job.workspaceRoot, job.id, "failed", {
+      errorMessage: message,
+      summary: message,
+      logFile,
+      request
+    });
+    throw new Error(`${message} Run without --background to see the error.`);
   }
 
   return {

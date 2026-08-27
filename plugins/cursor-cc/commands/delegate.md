@@ -1,6 +1,7 @@
 ---
 description: Delegate investigation, an explicit fix request, or follow-up work to the Cursor delegate subagent
 argument-hint: "[--background|--wait] [--resume|--fresh] [--model <model>] [--mode <ask|plan>] [what Cursor should investigate, solve, or continue]"
+disable-model-invocation: true
 allowed-tools: Bash(node:*), AskUserQuestion, Agent
 ---
 

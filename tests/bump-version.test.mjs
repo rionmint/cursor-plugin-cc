@@ -23,20 +23,20 @@ function makeVersionFixture() {
 
   writeJson(path.join(root, "package.json"), {
     name: "cursor-plugin-cc",
-    version: "0.2.0"
+    version: "0.2.1"
   });
   writeJson(path.join(root, "plugins", "cursor-cc", ".claude-plugin", "plugin.json"), {
     name: "cursor-cc",
-    version: "0.2.0"
+    version: "0.2.1"
   });
   writeJson(path.join(root, ".claude-plugin", "marketplace.json"), {
     metadata: {
-      version: "0.2.0"
+      version: "0.2.1"
     },
     plugins: [
       {
         name: "cursor-cc",
-        version: "0.2.0"
+        version: "0.2.1"
       }
     ]
   });
@@ -75,7 +75,7 @@ test("bump-version check mode reports stale metadata", () => {
   assert.match(result.stderr, /\.claude-plugin\/marketplace\.json metadata\.version/);
 });
 
-test("repo manifests are in sync at 0.2.0", () => {
-  const result = run("node", [SCRIPT, "--check", "0.2.0"], { cwd: ROOT });
+test("repo manifests are in sync at 0.2.1", () => {
+  const result = run("node", [SCRIPT, "--check", "0.2.1"], { cwd: ROOT });
   assert.equal(result.status, 0, result.stderr);
 });

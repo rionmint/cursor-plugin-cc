@@ -107,17 +107,23 @@ a kill — in [SECURITY.md](./SECURITY.md), including what is *not* defended.
 ## How a run works
 
 ```
-cursor-agent -p <prompt> --workspace <ws> --mode ask --output-format text --trust
+cursor-agent --print --workspace <ws> --mode ask --output-format json --trust
+        ↑ the prompt is written to the child's stdin, not passed as an argument
 ```
 
-- Review uses `--output-format text`; critique uses `--output-format json` and unwraps the result
-  envelope before parsing the structured findings.
-- `--output-format` is only honoured together with `-p` / `--print`.
+- **The prompt never appears on the command line.** It goes to the child on stdin, which Cursor
+  accepts and which keeps free-form text away from Windows `cmd` (see [SECURITY.md](./SECURITY.md)).
+- **Every run asks for `--output-format json`**, review included. The envelope carries `session_id`,
+  which plain text output does not, and the bridge unwraps `result` before showing it to you. Critique
+  additionally parses that text as the structured findings schema.
+- `--output-format` is only honoured together with `--print`.
 - The session id is read back out of Cursor's result envelope (`session_id`); it cannot be assigned up
   front. `--resume-last` continues the stored session via `cursor-agent --resume <id>`.
-- Background runs record both `bridgePid` (the Node worker) and `agentPid` (the detached `cursor-agent`
-  child). `/cursor-cc:stop` kills every distinct pid among them. Terminal status is claimed under a
-  locked compare-and-set, so a finishing worker cannot overwrite `cancelled` with `completed`.
+- Background runs record both `bridgePid` (the Node worker) and `agentPid` (the `cursor-agent` child;
+  detached on POSIX, an ordinary child on Windows where the worker owns the tree). `/cursor-cc:stop`
+  kills every distinct pid among them, after checking that the pid still looks like one of ours.
+  Terminal status is claimed under a locked compare-and-set, so a finishing worker cannot overwrite
+  `cancelled` with `completed`.
 
 ---
 

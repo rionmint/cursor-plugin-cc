@@ -38,7 +38,8 @@ Argument handling:
 - `--model` and `--mode` are runtime-selection flags. Preserve them for the bridge call; do not treat them as review focus text.
 - Leave `--model` and `--mode` unset unless the user explicitly asks for them. Accepted mode values: `ask`, `plan` (both read-only).
 - The bridge script parses `--wait` and `--background`. Bridge `--background` owns the long-running process group (detached `run-worker` + cursor-agent child). Claude Code's `Bash(..., run_in_background: true)` is only for the short enqueue call, not the long review process.
-- `/cursor-cc:review` does not support staged-only review, unstaged-only review, or extra focus text.
+- `/cursor-cc:review` does not support staged-only or unstaged-only review. Leftover text is
+  forwarded as review focus; use `/cursor-cc:critique` when the user wants a pointed critique.
 - If the user needs a tougher design challenge pass, they should use `/cursor-cc:critique`.
 
 Argument handling (security):

@@ -181,7 +181,8 @@ const VALUE_PATTERNS = {
   model: /^[A-Za-z0-9][A-Za-z0-9._:@[\]=,/-]{0,127}$/,
   mode: /^(ask|plan)$/,
   session: /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/,
-  outputFormat: /^(text|json|stream-json)$/
+  outputFormat: /^(text|json|stream-json)$/,
+  sandbox: /^(enabled|disabled)$/
 };
 
 export function assertSafeCliValue(kind, value) {
@@ -247,10 +248,12 @@ export function buildHeadlessArgs(options = {}) {
     args.push("--approve-mcps");
   }
   if (options.sandbox) {
-    args.push("--sandbox", options.sandbox);
+    args.push("--sandbox", assertSafeCliValue("sandbox", options.sandbox));
   }
   for (const dir of options.pluginDirs ?? []) {
-    args.push("--plugin-dir", dir);
+    // A plugin directory is a path like the workspace, and it must not be able
+    // to masquerade as a flag either.
+    args.push("--plugin-dir", assertSafeWorkspace(dir));
   }
 
   return args;

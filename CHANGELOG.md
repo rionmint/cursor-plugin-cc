@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.2.1
+
+A second adversarial pass — this time by Grok Build, Codex and Cursor itself
+through this very plugin — went after the 0.2.0 write-up rather than the code.
+It found that the documentation was a release behind and, worse, that
+SECURITY.md claimed protections the implementation did not deliver. A false
+security claim is more damaging than an absent one, so this release is mostly
+about making every claim checkable.
+
+### Fixed — documentation that did not match the code
+
+- **README described the pre-0.2.0 architecture.** The "How a run works" example
+  still showed `-p <prompt> … --output-format text`, while 0.2.0 had moved the
+  prompt to stdin and switched every run to `--output-format json`. The
+  changelog and the landing page contradicted each other.
+- **SECURITY.md said tests proved review cannot edit files.** They assert the
+  argv, not the CLI's behaviour, which the same file admitted further down.
+- **SECURITY.md said files are written `0o600`.** Job records were; run logs
+  were not. They are now — see below — and the claim is scoped to what is true.
+- **SECURITY.md counted the 8 MiB stdin cap as protection against the child.**
+  That cap is on what the bridge reads from a pipe, not on what it sends.
+- **The plugin's controls are now split into what the code enforces, what is
+  only an instruction to a model, and what is not defended at all.** The kill
+  check is a substring match, the state lock is a pid file, and the read-only
+  mode is a request to the Cursor CLI. All three now say so.
+- `review.md` claimed the command takes no focus text; the bridge forwards it.
+
+### Fixed — code
+
+- Run logs are created `0o600`. They hold the prompt and any inlined repository
+  content, so they get the same treatment as the job records beside them.
+- `--sandbox` and `--plugin-dir` values are validated like every other flag
+  value; they were the two that slipped through in 0.2.0.
+- A background run whose worker fails to spawn is marked `failed` instead of
+  sitting at `queued` forever.
+- `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are no longer
+  swept up by the credential-name filter. They exist to be shared and are
+  usually what a reviewer wants to look at.
+- `/cursor-cc:delegate` carries `disable-model-invocation: true`, matching the
+  0.2.0 claim that the subagent is no longer for spontaneous use.
+
+### Added
+
+- `license`, `homepage` and `repository` in the plugin manifest.
+
 ## 0.2.0
 
 Security release. Everything below was found by an adversarial review of 0.1.0

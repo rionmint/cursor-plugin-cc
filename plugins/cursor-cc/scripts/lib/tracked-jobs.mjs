@@ -63,7 +63,9 @@ export function appendLogBlock(logFile, title, body) {
 
 export function createJobLogFile(workspaceRoot, jobId, title) {
   const logFile = resolveJobLogFile(workspaceRoot, jobId);
-  fs.writeFileSync(logFile, "", "utf8");
+  // A run log holds the prompt and whatever repository content went into it, so
+  // it is created owner-only like the job records beside it.
+  fs.writeFileSync(logFile, "", { encoding: "utf8", mode: 0o600 });
   if (title) {
     appendLogLine(logFile, `Starting ${title}.`);
   }
