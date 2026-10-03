@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.3
+
+### Fixed — the session env file grew on every resume and compaction
+
+- **The SessionStart hook appended the same two exports every time it ran.**
+  SessionStart fires again on each resume and each context compaction, and the
+  host inlines the env file into every Bash call. In a session that lived for
+  days the file reached twelve copies; together with the other plugins' files
+  the inlined text passed 8192 bytes, where Git Bash cuts the `bash -c`
+  argument, and long Bash commands started failing with a syntax error at the
+  cut. The hook now skips a write when the variable's last export already
+  carries the same value. It compares against the last export rather than any
+  earlier one, so a value that changes and changes back still ends on the
+  latest value. A missing file is treated as empty; any other read error is
+  reported instead of being taken for an empty file, and an existing file
+  without a trailing newline no longer gets the new export glued onto its last
+  line. The upstream plugins this one derives from still append unconditionally
+  (openai/codex-plugin-cc#528, xai-org/grok-build-plugin-cc#18).
+
 ## 0.2.2
 
 Codex reviewed 0.2.1 from an isolated checkout and found what the other two
