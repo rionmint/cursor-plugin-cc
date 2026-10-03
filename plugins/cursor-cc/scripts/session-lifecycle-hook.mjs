@@ -34,7 +34,32 @@ function appendEnvVar(name, value) {
     process.stderr.write(`[cursor-cc] refusing to export ${name}: value contains a line break\n`);
     return;
   }
-  fs.appendFileSync(process.env.CLAUDE_ENV_FILE, `export ${name}=${shellEscape(text)}\n`, "utf8");
+  // SessionStart fires again on every resume and compaction, and the host
+  // inlines this file into every Bash call. Appending the same export each time
+  // grows it until the command line overflows (Git Bash cuts `bash -c` at 8192
+  // bytes), so skip the write when the variable's last export already carries
+  // this value. Comparing against the last export, not any earlier one, keeps
+  // A -> B -> A ending on A.
+  const envFile = process.env.CLAUDE_ENV_FILE;
+  const line = `export ${name}=${shellEscape(text)}`;
+  let current = "";
+  try {
+    current = fs.readFileSync(envFile, "utf8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+  const prefix = `export ${name}=`;
+  const lastExport = current
+    .split(/\r?\n/)
+    .filter((entry) => entry.startsWith(prefix))
+    .pop();
+  if (lastExport === line) {
+    return;
+  }
+  const separator = current === "" || current.endsWith("\n") ? "" : "\n";
+  fs.appendFileSync(envFile, `${separator}${line}\n`, "utf8");
 }
 
 function cleanupSessionJobs(cwd, sessionId) {
