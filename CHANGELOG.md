@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.4
+
+### Fixed — on Windows every shell call was refused when a command hook was configured
+
+- **Cursor wrote the hook as a PowerShell line and ran it with bash.** On
+  Windows Cursor builds every command hook, including the Claude Code
+  `PreToolUse` hooks it imports from `~/.claude/settings.json`, as a PowerShell
+  command line, but hands that line to `$SHELL` when it is set. The bridge is
+  usually started from Claude Code's Bash tool or Git Bash, where `SHELL` is
+  bash, so the line was a bash syntax error. Bash exits 2 on a syntax error and
+  Cursor reads exit 2 as "blocked", so every shell call in a run came back as
+  `Rejected: Hook blocked with message: --: eval: line 1: syntax error near
+  unexpected token '&'`. The bridge now drops `SHELL` from the environment it
+  starts `cursor-agent` with on Windows; Cursor then runs the hooks with
+  PowerShell as written. Other platforms are unchanged. Reproduced with Cursor
+  CLI 2026.10.01 before the fix and checked through the bridge after it: a plain
+  `echo` runs, and a command the hook is meant to refuse is still refused.
+- Note for hook authors: when Cursor runs a hook through PowerShell, the JSON on
+  the hook's stdin starts with a UTF-8 byte order mark. A hook that parses stdin
+  with a strict JSON reader fails on it; read the bytes, decode as UTF-8 and
+  strip the mark before parsing.
+
 ## 0.2.3
 
 ### Fixed — the session env file grew on every resume and compaction
