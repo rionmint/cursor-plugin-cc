@@ -301,6 +301,22 @@ export function unwrapResultEnvelope(stdout) {
   }
 }
 
+/**
+ * The environment a headless Cursor run starts with. On Windows Cursor writes
+ * every command hook, including the Claude Code hooks it imports, as a
+ * PowerShell command line, but runs that line with `$SHELL` when it is set.
+ * Under Git Bash (and Claude Code's Bash tool) `SHELL` is bash, the line is a
+ * bash syntax error, bash exits 2, and Cursor reads exit 2 as "blocked", so
+ * every shell call is refused. Without `SHELL` Cursor uses PowerShell and the
+ * hooks run as written.
+ */
+export function cursorChildEnv(env = process.env, platform = process.platform) {
+  if (platform !== "win32" || !env || !Object.keys(env).some((key) => key.toUpperCase() === "SHELL")) {
+    return env;
+  }
+  return Object.fromEntries(Object.entries(env).filter(([key]) => key.toUpperCase() !== "SHELL"));
+}
+
 export function runHeadlessAgent(cwd, options = {}) {
   const binary = options.binary ?? resolveCursorBinary(options.env ?? process.env);
   const prompt = String(options.prompt ?? "").trim() || options.defaultPrompt || "";
@@ -319,7 +335,7 @@ export function runHeadlessAgent(cwd, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawnCli(binary, args, {
       cwd,
-      env: options.env ?? process.env,
+      env: cursorChildEnv(options.env ?? process.env, platform),
       stdio: ["pipe", "pipe", "pipe"],
       detached,
       windowsHide: true

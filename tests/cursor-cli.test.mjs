@@ -6,6 +6,7 @@ import { makeTempDir } from "./helpers.mjs";
 import {
   buildHeadlessArgs,
   buildReviewPrompt,
+  cursorChildEnv,
   extractSessionId,
   getCursorAuthStatus,
   getCursorAvailability,
@@ -15,6 +16,21 @@ import {
   unwrapResultEnvelope
 } from "../plugins/cursor-cc/scripts/lib/cursor.mjs";
 import { runCommand } from "../plugins/cursor-cc/scripts/lib/process.mjs";
+
+test("cursorChildEnv drops SHELL on Windows so Cursor runs its hooks with PowerShell", () => {
+  const env = { SHELL: "/usr/bin/bash.exe", PATH: "C:\\bin", ComSpec: "C:\\Windows\\system32\\cmd.exe" };
+  assert.deepEqual(cursorChildEnv(env, "win32"), { PATH: "C:\\bin", ComSpec: "C:\\Windows\\system32\\cmd.exe" });
+  assert.deepEqual(cursorChildEnv({ Shell: "bash", PATH: "x" }, "win32"), { PATH: "x" });
+  assert.equal(env.SHELL, "/usr/bin/bash.exe");
+  const noShell = { PATH: "x" };
+  assert.equal(cursorChildEnv(noShell, "win32"), noShell);
+});
+
+test("cursorChildEnv keeps SHELL on other platforms", () => {
+  const env = { SHELL: "/bin/zsh", PATH: "/usr/bin" };
+  assert.equal(cursorChildEnv(env, "darwin"), env);
+  assert.equal(cursorChildEnv(env, "linux"), env);
+});
 
 test("resolveCursorBinary prefers CURSOR_AGENT_BINARY override", () => {
   assert.equal(resolveCursorBinary({ CURSOR_AGENT_BINARY: "/custom/cursor-agent" }), "/custom/cursor-agent");
