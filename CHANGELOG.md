@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.6
+
+- **`/cursor-cc:check` prints one fixed table.** The command used to run the bridge with `--json` and
+  let the model present it, so every session showed it differently. The bridge now prints the table
+  itself (the same rows in the same order) and the command only translates its words. Missing values
+  print as `unknown`, and pipes and line breaks cannot break the table.
+- **The hook's data directory wins over the flag.** `--plugin-data` is only read right after the
+  subcommand, so prompt text is never taken for it, a missing value is an error, and a
+  `CURSOR_CC_PLUGIN_DATA` already exported by the hook is kept: on a host that did not fill
+  `${CLAUDE_PLUGIN_DATA}` into the command text, bash would expand it to another plugin's directory.
+  The SessionEnd hook cleans up the directory the host gave it.
+- **The hook keeps its export file small.** Each write keeps one line per variable and drops the
+  shared `CLAUDE_PLUGIN_DATA` line older versions wrote, so a file grown by repeated resumes shrinks
+  on the next one. Claude Code puts these files into every Bash call's command line; on Windows a
+  long-lived session had passed the 32 KB limit (this plugin's file alone had grown to 9.8 KB, with
+  59 copies of each line from before 0.2.3) and every Bash call failed with `ENAMETOOLONG`.
+- The bridge text uses `<->` instead of an arrow character.
+
 ## 0.2.5
 
 ### Fixed — the plugin handed its data directory to every other plugin in the session

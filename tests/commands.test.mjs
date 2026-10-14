@@ -125,7 +125,9 @@ test("plugin surfaces use /cursor-cc names and the cursor-agent binary, not code
   assert.match(hooks, /session-lifecycle-hook\.mjs/);
 
   const check = read("commands/check.md");
-  assert.match(check, /cursor-bridge\.mjs" check --json/);
+  assert.match(check, /cursor-bridge\.mjs" check\r?\n/);
+  assert.match(check, /fixed table/);
+  assert.match(check, /Keep the title, every row, and the row order exactly as printed/);
   assert.doesNotMatch(check, /enable-review-gate|disable-review-gate/);
 
   const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");

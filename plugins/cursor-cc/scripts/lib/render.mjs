@@ -174,17 +174,40 @@ function appendReasoningSection(lines, reasoningSummary) {
   }
 }
 
+function tableCell(value) {
+  const text = value === undefined || value === null || value === "" ? "unknown" : String(value);
+  return text.replace(/\r\n|\r|\n/g, " ").replace(/\|/g, "\\|");
+}
+
+function statusOf(part) {
+  return part && typeof part === "object" ? part : {};
+}
+
+/**
+ * The check is printed as one fixed table so every session shows the same
+ * rows in the same order; the command only translates it.
+ */
 export function renderSetupReport(report) {
+  const node = statusOf(report.node);
+  const cursor = statusOf(report.cursor);
+  const auth = statusOf(report.auth);
+  const rows = [
+    ["Node", node.available ? node.detail : `not found (${node.detail ?? "unknown"})`],
+    [
+      "cursor-agent",
+      cursor.available
+        ? `${cursor.detail ?? "unknown"} (\`${cursor.binary ?? "cursor-agent"}\`)`
+        : `not found (${cursor.detail ?? "unknown"})`
+    ],
+    ["Sign-in", auth.loggedIn ? auth.detail : `not signed in (${auth.detail ?? "unknown"})`],
+    ["Runs", "started and tracked by the plugin (PID + log files)"]
+  ];
   const lines = [
-    "# Cursor Check",
+    `## Cursor check: ${report.ready ? "ready" : "needs attention"}`,
     "",
-    `Status: ${report.ready ? "ready" : "needs attention"}`,
-    "",
-    "Checks:",
-    `- node: ${report.node.detail}`,
-    `- cursor-agent: ${report.cursor.detail}`,
-    `- auth: ${report.auth.detail}`,
-    `- session runtime: ${report.sessionRuntime.label}`,
+    "| Item | Status |",
+    "|---|---|",
+    ...rows.map(([label, value]) => `| ${label} | ${tableCell(value)} |`),
     ""
   ];
 
@@ -201,6 +224,8 @@ export function renderSetupReport(report) {
     for (const step of report.nextSteps) {
       lines.push(`- ${step}`);
     }
+  } else {
+    lines.push("Next steps: none.");
   }
 
   return `${lines.join("\n").trimEnd()}\n`;
