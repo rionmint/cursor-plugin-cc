@@ -9,7 +9,7 @@ user-invocable: false
 Use this skill only inside the `cursor-cc:cursor-delegate` subagent.
 
 Primary helper:
-- `node "${CLAUDE_PLUGIN_ROOT}/scripts/cursor-bridge.mjs" run '<raw arguments>'`
+- `node "${CLAUDE_PLUGIN_ROOT}/scripts/cursor-bridge.mjs" run --plugin-data "${CLAUDE_PLUGIN_DATA}" '<raw arguments>'`
 - Single quotes, always. The argument string reaches a shell; if it contains a single quote, a backtick, `$(`, or a newline, refuse the request instead of escaping it.
 
 Execution rules:

@@ -9,10 +9,12 @@ import {
   loadState,
   resolveJobFile,
   resolveJobLogFile,
+  resolvePluginDataDir,
   resolveStateDir,
   resolveStateFile,
   saveState
 } from "../plugins/cursor-cc/scripts/lib/state.mjs";
+import { takePluginDataOption } from "../plugins/cursor-cc/scripts/cursor-bridge.mjs";
 
 test("resolveStateDir uses a temp-backed per-workspace directory", () => {
   const workspace = makeTempDir();
@@ -54,6 +56,28 @@ test("resolveStateDir uses CLAUDE_PLUGIN_DATA when it is provided", () => {
       process.env.CLAUDE_PLUGIN_DATA = previousPluginDataDir;
     }
   }
+});
+
+test("the plugin's own data directory wins over a CLAUDE_PLUGIN_DATA another plugin exported", () => {
+  const env = { CLAUDE_PLUGIN_DATA: "/data/agy-cc-rionmint-agy-cc", CURSOR_CC_PLUGIN_DATA: "/data/cursor-cc-rionmint-cursor-cc" };
+  assert.equal(resolvePluginDataDir(env), "/data/cursor-cc-rionmint-cursor-cc");
+  assert.equal(resolvePluginDataDir({ CLAUDE_PLUGIN_DATA: "/data/x", CURSOR_CC_PLUGIN_DATA: "  " }), "/data/x");
+  assert.equal(resolvePluginDataDir({}), null);
+});
+
+test("--plugin-data is taken off the command line wherever it is and becomes CURSOR_CC_PLUGIN_DATA", () => {
+  const env = { CLAUDE_PLUGIN_DATA: "/other-plugin" };
+  assert.deepEqual(takePluginDataOption(["check", "--plugin-data", "/mine", "--json"], env), ["check", "--json"]);
+  assert.equal(env.CURSOR_CC_PLUGIN_DATA, path.resolve("/mine"));
+  const inline = {};
+  assert.deepEqual(takePluginDataOption(["review", "--plugin-data=/x y", "--base main"], inline), ["review", "--base main"]);
+  assert.equal(inline.CURSOR_CC_PLUGIN_DATA, path.resolve("/x y"));
+  const empty = {};
+  assert.deepEqual(takePluginDataOption(["runs", "--plugin-data", ""], empty), ["runs"]);
+  assert.equal(empty.CURSOR_CC_PLUGIN_DATA, undefined, "an unexpanded or empty value is ignored");
+  const untouched = {};
+  assert.deepEqual(takePluginDataOption(["run", "fix it --plugin-data /evil"], untouched), ["run", "fix it --plugin-data /evil"]);
+  assert.equal(untouched.CURSOR_CC_PLUGIN_DATA, undefined, "text inside the raw arguments is not an option");
 });
 
 test("saveState prunes dropped job artifacts when indexed jobs exceed the cap", () => {

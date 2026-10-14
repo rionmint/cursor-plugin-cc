@@ -134,7 +134,15 @@ cursor-agent --print --workspace <ws> --mode ask --output-format json --trust
 | `CURSOR_AGENT_BINARY` | Override the `cursor-agent` executable path |
 | `CURSOR_API_KEY` / `CURSOR_AUTH_TOKEN` | Non-interactive authentication |
 | `CURSOR_CC_SESSION_ID` | Claude session id (set by the SessionStart hook) |
-| `CLAUDE_PLUGIN_DATA` | Where run state and logs are written |
+| `CURSOR_CC_PLUGIN_DATA` | Where run state and logs are written. Set by the SessionStart hook and by the `--plugin-data` flag every command passes |
+| `CLAUDE_PLUGIN_DATA` | Fallback for the above (hooks, or running the bridge by hand) |
+
+Why a variable of its own: Claude Code gives each plugin its own `CLAUDE_PLUGIN_DATA` in hooks and in
+command text, but not in Bash calls. There the variable is whatever a plugin's SessionStart hook last
+exported into the session; with several bridge plugins installed that can be another plugin's
+directory. So the commands pass `--plugin-data "${CLAUDE_PLUGIN_DATA}"`, which Claude
+Code fills in from the command text, and the hook exports `CURSOR_CC_PLUGIN_DATA` rather than the
+shared name.
 
 ---
 

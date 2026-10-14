@@ -36,6 +36,7 @@ import {
   generateJobId,
   listJobs,
   patchJobIfActive,
+  PLUGIN_DATA_OVERRIDE_ENV,
   upsertJob,
   writeJobFile
 } from "./lib/state.mjs";
@@ -1051,8 +1052,36 @@ async function handleCancel(argv) {
   outputCommandResult(payload, renderCancelReport({ ...nextJob, ...payload }), options.json);
 }
 
+/**
+ * `--plugin-data <dir>` may appear anywhere on the command line. The commands
+ * fill it from Claude Code's `${CLAUDE_PLUGIN_DATA}`, which is this plugin's
+ * own directory there; the environment variable of that name in a Bash call
+ * can be another plugin's. It is moved into `CURSOR_CC_PLUGIN_DATA` so that
+ * the state and a background worker both use it.
+ */
+export function takePluginDataOption(args, env = process.env) {
+  const rest = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    let value = null;
+    if (token === "--plugin-data") {
+      value = args[index + 1] ?? "";
+      index += 1;
+    } else if (token.startsWith("--plugin-data=")) {
+      value = token.slice("--plugin-data=".length);
+    } else {
+      rest.push(token);
+      continue;
+    }
+    if (value.trim()) {
+      env[PLUGIN_DATA_OVERRIDE_ENV] = path.resolve(value.trim());
+    }
+  }
+  return rest;
+}
+
 async function main() {
-  const [subcommand, ...argv] = process.argv.slice(2);
+  const [subcommand, ...argv] = takePluginDataOption(process.argv.slice(2));
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
     printUsage();
     return;

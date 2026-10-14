@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.5
+
+### Fixed — the plugin handed its data directory to every other plugin in the session
+
+- **The SessionStart hook exported the shared `CLAUDE_PLUGIN_DATA`.** Claude Code gives each plugin
+  its own `CLAUDE_PLUGIN_DATA` only in hooks and in command text; in a Bash call the variable is
+  whatever a plugin's SessionStart hook last exported. The Codex and Grok plugins export it too.
+  Measured on Windows: the session's hook files were Codex, Grok, Cursor in that order and every
+  Bash call, other plugins' commands included, saw the Cursor directory; the agy plugin 0.1.0 put its
+  state there. In another hook order this plugin would have been handed another plugin's directory.
+- Every command now passes `--plugin-data "${CLAUDE_PLUGIN_DATA}"`, which Claude Code fills in per
+  plugin; the bridge takes it off the command line into `CURSOR_CC_PLUGIN_DATA`, which wins over the
+  shared name, and the hook exports `CURSOR_CC_PLUGIN_DATA` instead of `CLAUDE_PLUGIN_DATA`.
+- Tests start every test file with a plugin data directory of their own and remove the temp
+  directories they create. They used to inherit the shell's `CLAUDE_PLUGIN_DATA`, so a run inside a
+  Claude Code session wrote test state into the real plugin data directory.
+- The version test reads the version from `package.json` instead of pinning `0.2.3`, which 0.2.4 had
+  left failing.
+
 ## 0.2.4
 
 ### Fixed — on Windows every shell call was refused when a command hook was configured

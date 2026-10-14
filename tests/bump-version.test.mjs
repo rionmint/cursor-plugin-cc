@@ -75,7 +75,10 @@ test("bump-version check mode reports stale metadata", () => {
   assert.match(result.stderr, /\.claude-plugin\/marketplace\.json metadata\.version/);
 });
 
-test("repo manifests are in sync at 0.2.3", () => {
-  const result = run("node", [SCRIPT, "--check", "0.2.3"], { cwd: ROOT });
+test("repo manifests are in sync with package.json", () => {
+  // Read the version rather than pinning it here, so a release bump does not
+  // leave this test failing (0.2.4 shipped with it still expecting 0.2.3).
+  const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  const result = run("node", [SCRIPT, "--check", version], { cwd: ROOT });
   assert.equal(result.status, 0, result.stderr);
 });
