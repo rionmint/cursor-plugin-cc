@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.7
+
+- **`--plugin-data` is also read among the other options.** The bridge only read it right after the
+  subcommand. Placed after another option in a call written by hand (seen with the agy bridge, which
+  shares this code), it was dropped as an unknown option, its directory went to Cursor at the front of
+  the prompt, and the run was stored in the temp fallback. It is now a known option of every
+  subcommand. The first directory set still wins (the hook's export, then the flag right after the
+  subcommand, then a later one), and a later one that is ignored is reported.
+
 ## 0.2.6
 
 - **`/cursor-cc:check` prints one fixed table.** The command used to run the bridge with `--json` and

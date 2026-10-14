@@ -88,6 +88,9 @@ if (isPrint || hasFlag("--resume") || hasFlag("--continue")) {
       prompt = "";
     }
   }
+  if (process.env.FAKE_CURSOR_PROMPT_LOG) {
+    fs.writeFileSync(process.env.FAKE_CURSOR_PROMPT_LOG, prompt);
+  }
   const outputFormat = flagValue("--output-format") ?? "text";
 
   let body;

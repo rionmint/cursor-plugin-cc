@@ -74,3 +74,45 @@ test("flags packed into one argument alongside another are not dropped", () => {
   assert.equal(argv[argv.indexOf("--mode") + 1], "plan");
   assert.doesNotMatch(result.stderr, /ignoring unknown option/);
 });
+
+test("--plugin-data after other options is used, not sent to Cursor as prompt text", () => {
+  // A call written by hand put it after --fresh. As an unknown option it was
+  // dropped with a warning, its directory went to Cursor at the front of the
+  // prompt, and the run was stored in the temp fallback.
+  const { repo, binDir, pluginDataDir, fakeCursorLog } = setupReviewableRepo();
+  const otherPlugin = makeTempDir();
+  const promptLog = path.join(makeTempDir(), "prompt.txt");
+
+  const result = run("node", [SCRIPT, "run", "--fresh", "--plugin-data", pluginDataDir, "read the code"], {
+    cwd: repo,
+    env: buildEnv(binDir, {
+      CLAUDE_PLUGIN_DATA: otherPlugin,
+      CURSOR_CC_PLUGIN_DATA: "",
+      FAKE_CURSOR_LOG: fakeCursorLog,
+      FAKE_CURSOR_PROMPT_LOG: promptLog
+    })
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stderr, /ignoring unknown option/);
+  assert.equal(fs.readFileSync(promptLog, "utf8").trim(), "read the code");
+  assert.ok(fs.existsSync(path.join(pluginDataDir, "state")), "state is in the given directory");
+  assert.ok(!fs.existsSync(path.join(otherPlugin, "state")), "not in the other plugin's");
+});
+
+test("--plugin-data right after the subcommand wins over a later one", () => {
+  const { repo, binDir, pluginDataDir, fakeCursorLog } = setupReviewableRepo();
+  const later = makeTempDir();
+  const promptLog = path.join(makeTempDir(), "prompt.txt");
+
+  const result = run("node", [SCRIPT, "run", "--plugin-data", pluginDataDir, "--fresh --plugin-data " + later + " read the code"], {
+    cwd: repo,
+    env: buildEnv(binDir, { CURSOR_CC_PLUGIN_DATA: "", FAKE_CURSOR_LOG: fakeCursorLog, FAKE_CURSOR_PROMPT_LOG: promptLog })
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /ignoring --plugin-data/);
+  assert.equal(fs.readFileSync(promptLog, "utf8").trim(), "read the code");
+  assert.ok(fs.existsSync(path.join(pluginDataDir, "state")));
+  assert.ok(!fs.existsSync(path.join(later, "state")));
+});
