@@ -5,6 +5,8 @@ disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash(node:*), Bash(git:*), AskUserQuestion
 ---
 
+Code Mode: if `Bash` is not one of your top-level tools, run the shell commands below inside the `REPL` tool (`await Bash({command: ...})`) instead of calling `Bash` directly.
+
 Run a Cursor review through the plugin bridge (read-only ask mode).
 
 Raw slash-command arguments:

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.8 — 2026-11-22
+
+- **Commands say how to run their shell blocks under Code Mode.** With
+  `CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1` only `REPL` is a top-level tool and `Bash` is callable only
+  inside it. In a session that had just run `/reload-plugins`, `/cursor-cc:check` first called `Bash`
+  directly twice ("No such tool available: Bash. Bash is only available inside REPL") and only then
+  went through `REPL`. Every command that hands the model a bash block now starts with one line telling
+  it to use `REPL` (`await Bash({command: ...})`) when `Bash` is not a top-level tool; without Code Mode
+  the line changes nothing. A test fails when such a command lacks the line. The delegate subagent
+  (`tools: Bash`) needs no change: a Bash-only subagent runs its command under Code Mode as before.
+
 ## 0.2.7
 
 - **`--plugin-data` is also read among the other options.** The bridge only read it right after the

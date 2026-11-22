@@ -4,6 +4,8 @@ argument-hint: ''
 allowed-tools: Bash(node:*), AskUserQuestion
 ---
 
+Code Mode: if `Bash` is not one of your top-level tools, run the shell commands below inside the `REPL` tool (`await Bash({command: ...})`) instead of calling `Bash` directly.
+
 Run:
 
 ```bash

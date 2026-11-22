@@ -5,6 +5,8 @@ disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash(node:*), Bash(git:*), AskUserQuestion
 ---
 
+Code Mode: if `Bash` is not one of your top-level tools, run the shell commands below inside the `REPL` tool (`await Bash({command: ...})`) instead of calling `Bash` directly.
+
 Run a Cursor critique through the plugin bridge.
 Position it as a challenge pass that questions the chosen implementation, design choices, tradeoffs, and assumptions.
 It is not just a stricter pass over implementation defects.

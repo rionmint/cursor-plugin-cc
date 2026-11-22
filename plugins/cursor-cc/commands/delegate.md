@@ -5,6 +5,8 @@ disable-model-invocation: true
 allowed-tools: Bash(node:*), AskUserQuestion, Agent
 ---
 
+Code Mode: if `Bash` is not one of your top-level tools, run the shell commands below inside the `REPL` tool (`await Bash({command: ...})`) instead of calling `Bash` directly.
+
 Invoke the `cursor-cc:cursor-delegate` subagent via the `Agent` tool (`subagent_type: "cursor-cc:cursor-delegate"`), forwarding the raw user request as the prompt.
 `cursor-cc:cursor-delegate` is a subagent, not a skill — do not call `Skill(cursor-cc:cursor-delegate)` (no such skill) or `Skill(cursor-cc:delegate)` (that re-enters this command and hangs the session). The command runs inline so the `Agent` tool stays in scope; forked general-purpose subagents do not expose it.
 The final user-visible response must be Cursor's output verbatim.

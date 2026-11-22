@@ -154,3 +154,22 @@ test("runtime skill only forwards run once", () => {
   assert.match(resultHandling, /do not turn a failed or incomplete Cursor run into a Claude-side implementation attempt/i);
   assert.match(resultHandling, /if Cursor was never successfully invoked, do not generate a substitute answer at all/i);
 });
+
+// Code Mode (CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1) leaves REPL as the top-level tool and Bash is
+// callable only inside it. A command that hands the model a bash block without saying so drew a
+// rejected direct Bash call first ("No such tool available: Bash. Bash is only available inside REPL").
+test("every command that asks the model to run a shell block says how to run it under Code Mode", () => {
+  const dir = path.join(PLUGIN_ROOT, "commands");
+  let checked = 0;
+  for (const file of fs.readdirSync(dir).sort()) {
+    const source = fs.readFileSync(path.join(dir, file), "utf8");
+    if (!source.includes("```bash")) continue;
+    checked += 1;
+    assert.match(
+      source,
+      /^Code Mode: if `Bash` is not one of your top-level tools, run the shell commands below inside the `REPL` tool/m,
+      file
+    );
+  }
+  assert.ok(checked > 0, "no command with a shell block found");
+});
